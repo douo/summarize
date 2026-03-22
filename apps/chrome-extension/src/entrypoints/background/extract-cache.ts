@@ -110,7 +110,8 @@ export async function ensureChatExtract({
 
   const preferUrl = shouldPreferUrlMode(tab.url);
   const cached = panelSessionStore.getCachedExtract(tab.id, tab.url);
-  if (cached && (!preferUrl || cached.source === "url")) return cached;
+  // Ensure we have actual text if we're using the cache (not just a media probe)
+  if (cached && cached.text && (!preferUrl || cached.source === "url")) return cached;
 
   // 委托给 Extractor Router 进行抽取
   const result = await routeExtract({
@@ -176,10 +177,20 @@ export async function primeMediaHint({
   const attempt = await extractFromTab(tabId, 1200);
   if (!attempt.ok || !attempt.data.media) return;
 
+  const existingAfterProbe = panelSessionStore.getCachedExtract(tabId, url);
+  if (existingAfterProbe) {
+    // Only update media info if we already have a full extraction
+    existingAfterProbe.media = attempt.data.media;
+    existingAfterProbe.mediaDurationSeconds = attempt.data.mediaDurationSeconds ?? existingAfterProbe.mediaDurationSeconds;
+    return;
+  }
+
+  // If no existing, we can still store the media info but with empty text
+  // so that ensureChatExtract doesn't think it's done.
   panelSessionStore.setCachedExtract(
     tabId,
     fromPageExtract({
-      extracted: attempt.data,
+      extracted: { ...attempt.data, text: "", truncated: false },
       title,
     }),
   );
