@@ -278,6 +278,16 @@ button.setup__pill.isActive {
 }
 
 .raw {
+  margin: 14px 14px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  max-height: 400px;
+  overflow-y: auto;
+  color: var(--text);
 }

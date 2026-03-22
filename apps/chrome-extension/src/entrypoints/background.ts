@@ -162,6 +162,17 @@ export default defineBackground(() => {
         });
         break;
       }
+      case "panel:get-extracted": {
+        const payload = raw as { requestId: string; tabId: number; url: string };
+        if (!payload.requestId || !payload.tabId || !payload.url) return;
+        const cached = panelSessionStore.getCachedExtract(payload.tabId, payload.url);
+        void send(session, {
+          type: "ui:extracted",
+          requestId: payload.requestId,
+          text: cached?.text ?? null,
+        });
+        break;
+      }
       case "panel:agent":
         void (async () => {
           const settings = await loadSettings();

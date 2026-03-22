@@ -85,6 +85,8 @@ const {
   drawerEl,
   drawerToggleBtn,
   errorEl,
+  viewRawTextBtn,
+  rawEl,
   errorLogsBtn,
   errorMessageEl,
   errorRetryBtn,
@@ -1330,6 +1332,15 @@ const bgMessageRuntime = createSidepanelBgMessageRuntime({
   handleAgentResponse: (response) => {
     chatSession.handleAgentResponse(response as never);
   },
+  handleUiExtracted: (msg: { text: string | null }) => {
+    if (msg.text) {
+      rawEl.textContent = msg.text;
+      rawEl.classList.remove("hidden");
+    } else {
+      rawEl.textContent = "No extracted text available.";
+      rawEl.classList.remove("hidden");
+    }
+  },
 });
 
 function handleBgMessage(msg: BgToPanel) {
@@ -1590,6 +1601,8 @@ bindSidepanelUiEvents({
   clearBtn,
   drawerToggleBtn,
   advancedBtn,
+  viewRawTextBtn,
+  rawEl,
   advancedSettingsSummaryEl,
   chatSendBtn,
   chatInputEl,
@@ -1623,6 +1636,20 @@ bindSidepanelUiEvents({
     refreshModelsIfStale();
   },
   runRefreshFree,
+  requestExtractedText: () => {
+    if (!rawEl.classList.contains("hidden")) {
+      rawEl.classList.add("hidden");
+      return;
+    }
+    rawEl.textContent = "Loading...";
+    rawEl.classList.remove("hidden");
+    void send({
+      type: "panel:get-extracted",
+      requestId: "raw",
+      tabId: activeTabId,
+      url: activeTabUrl,
+    });
+  },
 });
 
 bootstrapSidepanel({

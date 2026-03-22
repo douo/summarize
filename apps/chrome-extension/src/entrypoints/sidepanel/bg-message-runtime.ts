@@ -18,6 +18,7 @@ export function handleSidepanelBgMessage(options: {
   handleChatHistory: (msg: Extract<BgToPanel, { type: "chat:history" }>) => void;
   handleAgentChunk: (msg: Extract<BgToPanel, { type: "agent:chunk" }>) => void;
   handleAgentResponse: (msg: Extract<BgToPanel, { type: "agent:response" }>) => void;
+  handleUiExtracted: (msg: Extract<BgToPanel, { type: "ui:extracted" }>) => void;
 }) {
   const { msg } = options;
   switch (msg.type) {
@@ -50,6 +51,9 @@ export function handleSidepanelBgMessage(options: {
       return;
     case "agent:response":
       options.handleAgentResponse(msg);
+      return;
+    case "ui:extracted":
+      options.handleUiExtracted(msg);
       return;
   }
 }
@@ -105,12 +109,13 @@ export function createSidepanelBgMessageRuntime(options: {
   applyPanelCache: (cache: unknown, opts: { preserveChat?: boolean }) => void;
   rememberPendingSummaryRun: (run: RunStart) => void;
   attachSummaryRun: (run: RunStart) => void;
-  handleChatHistory: (msg: Extract<BgMessage, { type: "chat:history" }>) => void;
-  handleAgentChunk: (msg: Extract<BgMessage, { type: "agent:chunk" }>) => void;
-  handleAgentResponse: (msg: Extract<BgMessage, { type: "agent:response" }>) => void;
+  handleChatHistory: (msg: Extract<BgToPanel, { type: "chat:history" }>) => void;
+  handleAgentChunk: (msg: Extract<BgToPanel, { type: "agent:chunk" }>) => void;
+  handleAgentResponse: (msg: Extract<BgToPanel, { type: "agent:response" }>) => void;
+  handleUiExtracted: (msg: Extract<BgToPanel, { type: "ui:extracted" }>) => void;
 }) {
   return {
-    handle(msg: BgMessage) {
+    handle(msg: BgToPanel) {
       handleSidepanelBgMessage({
         msg,
         applyUiState: (state) => {
@@ -208,6 +213,7 @@ export function createSidepanelBgMessageRuntime(options: {
         handleChatHistory: options.handleChatHistory,
         handleAgentChunk: options.handleAgentChunk,
         handleAgentResponse: options.handleAgentResponse,
+        handleUiExtracted: options.handleUiExtracted,
       });
     },
   };

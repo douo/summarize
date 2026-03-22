@@ -3,6 +3,7 @@ import type { Settings, SlidesLayout } from "../../lib/settings";
 export function bindSidepanelUiEvents({
   refreshBtn,
   clearBtn,
+  viewRawTextBtn,
   drawerToggleBtn,
   advancedBtn,
   advancedSettingsSummaryEl,
@@ -30,9 +31,11 @@ export function bindSidepanelUiEvents({
   setSlidesLayout,
   refreshModelsIfStale,
   runRefreshFree,
+  requestExtractedText,
 }: {
   refreshBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
+  viewRawTextBtn: HTMLButtonElement;
   drawerToggleBtn: HTMLButtonElement;
   advancedBtn: HTMLButtonElement;
   advancedSettingsSummaryEl: Element | null;
@@ -60,10 +63,14 @@ export function bindSidepanelUiEvents({
   setSlidesLayout: (next: SlidesLayout) => void;
   refreshModelsIfStale: () => void;
   runRefreshFree: () => Promise<void>;
+  requestExtractedText: () => void;
 }) {
   refreshBtn.addEventListener("click", () => sendSummarize({ refresh: true }));
   clearBtn.addEventListener("click", () => {
     void clearCurrentView();
+  });
+  viewRawTextBtn.addEventListener("click", () => {
+    requestExtractedText();
   });
   drawerToggleBtn.addEventListener("click", () => toggleDrawer());
   advancedBtn.addEventListener("click", () => {

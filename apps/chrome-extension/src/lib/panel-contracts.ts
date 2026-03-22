@@ -1,5 +1,5 @@
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
-import type { SseSlidesData } from "./runtime-contracts";
+import type { SseSlidesData } from "./runtime-contracts.js";
 
 export type UiState = {
   panelOpen: boolean;
@@ -80,6 +80,7 @@ export type PanelToBg =
   | { type: "panel:slides-context"; requestId: string; url?: string }
   | { type: "panel:cache"; cache: PanelCachePayload }
   | { type: "panel:get-cache"; requestId: string; tabId: number; url: string }
+  | { type: "panel:get-extracted"; requestId: string; tabId: number; url: string }
   | { type: "panel:openOptions" };
 
 export type BgToPanel =
@@ -104,4 +105,5 @@ export type BgToPanel =
       transcriptTimedText?: string | null;
       error?: string;
     }
-  | { type: "ui:cache"; requestId: string; ok: boolean; cache?: PanelCachePayload };
+  | { type: "ui:cache"; requestId: string; ok: boolean; cache?: PanelCachePayload }
+  | { type: "ui:extracted"; requestId: string; text: string | null };

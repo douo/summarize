@@ -20,6 +20,7 @@ export function createSidepanelDom() {
   const slideNoticeMessageEl = byId<HTMLSpanElement>("slideNoticeMessage");
   const slideNoticeRetryBtn = byId<HTMLButtonElement>("slideNoticeRetry");
   const renderEl = byId<HTMLElement>("render");
+  const rawEl = byId<HTMLPreElement>("raw");
   const renderSlidesHostEl = document.createElement("div");
   renderSlidesHostEl.className = "render__slidesHost";
   const renderMarkdownHostEl = document.createElement("div");
@@ -35,6 +36,7 @@ export function createSidepanelDom() {
   const drawerToggleBtn = byId<HTMLButtonElement>("drawerToggle");
   const refreshBtn = byId<HTMLButtonElement>("refresh");
   const clearBtn = byId<HTMLButtonElement>("clear");
+  const viewRawTextBtn = byId<HTMLButtonElement>("viewRawText");
   const advancedBtn = byId<HTMLButtonElement>("advanced");
   const autoToggleRoot = byId<HTMLDivElement>("autoToggle");
   const lengthRoot = byId<HTMLDivElement>("lengthRoot");
@@ -117,6 +119,7 @@ export function createSidepanelDom() {
     modelStatusEl,
     pickersRoot,
     progressFillEl,
+    rawEl,
     refreshBtn,
     renderEl,
     renderMarkdownHostEl,
@@ -131,5 +134,6 @@ export function createSidepanelDom() {
     subtitleEl,
     summarizeControlRoot,
     titleEl,
+    viewRawTextBtn,
   };
 }
