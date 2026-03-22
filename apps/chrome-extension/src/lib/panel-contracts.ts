@@ -53,6 +53,7 @@ export type PanelCachePayload = {
   lastMeta: PanelCacheMeta;
   slides: SseSlidesData | null;
   transcriptTimedText: string | null;
+  text: string | null;
 };
 
 export type PanelToBg =

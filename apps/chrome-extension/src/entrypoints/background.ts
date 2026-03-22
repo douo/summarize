@@ -4,6 +4,7 @@ import { buildDaemonRequestBody, buildSummarizeRequestBody } from "../lib/daemon
 import { createDaemonRecovery, isDaemonUnreachableError } from "../lib/daemon-recovery";
 import { createDaemonStatusTracker } from "../lib/daemon-status";
 import type { BgToPanel, PanelCachePayload, PanelToBg } from "../lib/panel-contracts";
+import { logExtensionEvent } from "../lib/extension-logs";
 import { loadSettings, patchSettings } from "../lib/settings";
 import { canSummarizeUrl, extractFromTab, seekInTab } from "./background/content-script-bridge";
 import { daemonHealth, daemonPing, friendlyFetchError } from "./background/daemon-client";
@@ -56,6 +57,20 @@ export default defineBackground(() => {
   // Prevents arbitrary pages from triggering trusted clicks via the
   // postMessage → content-script → runtime bridge.
   const nativeInputArmedTabs = new Set<number>();
+
+  /** Extractor Router 日志回调——写入扩展日志系统 */
+  const logExtract = (windowId: number) => (event: string, detail?: Record<string, unknown>) => {
+    const detailPayload = detail
+      ? { windowId, ...detail }
+      : { windowId };
+    logExtensionEvent({
+      event,
+      detail: detailPayload,
+      scope: "extractor",
+      level: resolveLogLevel(event),
+    });
+    console.debug("[summarize][extractor]", { event, ...detailPayload });
+  };
 
   function resolveLogLevel(event: string) {
     const normalized = event.toLowerCase();
@@ -174,7 +189,8 @@ export default defineBackground(() => {
               panelSessionStore,
               sendStatus: (status) => sendStatus(session, status),
               extractFromTab,
-              fetchImpl: fetch,
+              fetchImpl: (input, init) => fetch(input, init),
+              log: logExtract(session.windowId),
             });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -251,7 +267,8 @@ export default defineBackground(() => {
               panelSessionStore,
               sendStatus: () => {},
               extractFromTab,
-              fetchImpl: fetch,
+              fetchImpl: (input, init) => fetch(input, init),
+              log: logExtract(session.windowId),
             });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

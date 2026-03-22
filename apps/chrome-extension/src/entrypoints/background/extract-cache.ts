@@ -1,5 +1,6 @@
 import { shouldPreferUrlMode } from "@steipete/summarize-core/content/url";
 import type { ExtractResponse } from "./content-script-bridge";
+import { routeExtract } from "./extractors/router";
 import type { SlidesPayload } from "./panel-utils";
 
 export type CachedExtract = {
@@ -41,10 +42,9 @@ type CachedExtractStore = {
 type LoadSettingsResult = {
   slidesEnabled: boolean;
   token: string;
+  maxChars: number;
+  extendedLogging: boolean;
 };
-
-const MIN_CHAT_CHARS = 100;
-const CHAT_FULL_TRANSCRIPT_MAX_CHARS = Number.MAX_SAFE_INTEGER;
 
 function countWords(text: string): number {
   return text.length > 0 ? text.split(/\s+/).filter(Boolean).length : 0;
@@ -93,6 +93,7 @@ export async function ensureChatExtract({
   sendStatus,
   extractFromTab,
   fetchImpl,
+  log,
 }: {
   session: { windowId: number };
   tab: chrome.tabs.Tab;
@@ -101,6 +102,7 @@ export async function ensureChatExtract({
   sendStatus: (status: string) => void;
   extractFromTab: (tabId: number, maxCharacters: number) => Promise<ExtractResponse>;
   fetchImpl: typeof fetch;
+  log: (event: string, detail?: Record<string, unknown>) => void;
 }): Promise<CachedExtract> {
   if (!tab.id || !tab.url) {
     throw new Error("Cannot chat on this page");
@@ -110,118 +112,35 @@ export async function ensureChatExtract({
   const cached = panelSessionStore.getCachedExtract(tab.id, tab.url);
   if (cached && (!preferUrl || cached.source === "url")) return cached;
 
-  if (!preferUrl) {
-    const extractedAttempt = await extractFromTab(tab.id, CHAT_FULL_TRANSCRIPT_MAX_CHARS);
-    if (extractedAttempt.ok) {
-      const extracted = extractedAttempt.data;
-      const text = extracted.text.trim();
-      if (text.length >= MIN_CHAT_CHARS) {
-        const next = fromPageExtract({
-          extracted,
-          title: tab.title?.trim() ?? null,
-        });
-        panelSessionStore.setCachedExtract(tab.id, next);
-        return next;
-      }
-    } else if (
-      extractedAttempt.error.toLowerCase().includes("chrome blocked") ||
-      extractedAttempt.error.toLowerCase().includes("failed to inject")
-    ) {
-      throw new Error(extractedAttempt.error);
-    }
-  }
-
-  const wantsSlides = settings.slidesEnabled && shouldPreferUrlMode(tab.url);
-  sendStatus(wantsSlides ? "Extracting video + thumbnails…" : "Extracting video transcript…");
-  const extractTimeoutMs = wantsSlides ? 6 * 60_000 : 3 * 60_000;
-  const extractController = new AbortController();
-  const extractTimeout = setTimeout(() => {
-    extractController.abort();
-  }, extractTimeoutMs);
-
-  let res!: Response;
-  let json!: {
-    ok: boolean;
-    extracted?: {
-      content: string;
-      title: string | null;
-      url: string;
-      wordCount: number;
-      totalCharacters: number;
-      truncated: boolean;
-      transcriptSource: string | null;
-      transcriptCharacters?: number | null;
-      transcriptWordCount?: number | null;
-      transcriptLines?: number | null;
-      transcriptionProvider?: string | null;
-      transcriptTimedText?: string | null;
-      mediaDurationSeconds?: number | null;
-      diagnostics?: CachedExtract["diagnostics"];
-    };
-    slides?: SlidesPayload | null;
-    error?: string;
-  };
-  try {
-    res = await fetchImpl("http://127.0.0.1:8787/v1/summarize", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${settings.token.trim()}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        url: tab.url,
-        mode: "url",
-        extractOnly: true,
-        timestamps: true,
-        ...(wantsSlides ? { slides: true } : {}),
-        maxCharacters: null,
-      }),
-      signal: extractController.signal,
-    });
-    json = (await res.json()) as typeof json;
-  } catch (err) {
-    if (extractController.signal.aborted) {
-      throw new Error("Video extraction timed out. The daemon may be stuck.");
-    }
-    throw err;
-  } finally {
-    clearTimeout(extractTimeout);
-  }
-  if (!res.ok || !json.ok || !json.extracted) {
-    throw new Error(json.error || `${res.status} ${res.statusText}`);
-  }
+  // 委托给 Extractor Router 进行抽取
+  const result = await routeExtract({
+    tab,
+    settings,
+    extractFromTab,
+    fetchImpl,
+    log,
+    sendStatus,
+  });
 
   const next: CachedExtract = {
-    url: json.extracted.url,
-    title: json.extracted.title,
-    text: json.extracted.content,
-    source: "url",
-    truncated: json.extracted.truncated,
-    totalCharacters: json.extracted.totalCharacters,
-    wordCount: json.extracted.wordCount,
-    media: null,
-    transcriptSource: json.extracted.transcriptSource ?? null,
-    transcriptionProvider: json.extracted.transcriptionProvider ?? null,
-    transcriptCharacters: json.extracted.transcriptCharacters ?? null,
-    transcriptWordCount: json.extracted.transcriptWordCount ?? null,
-    transcriptLines: json.extracted.transcriptLines ?? null,
-    transcriptTimedText: json.extracted.transcriptTimedText ?? null,
-    mediaDurationSeconds: json.extracted.mediaDurationSeconds ?? null,
-    slides: json.slides ?? null,
-    diagnostics: json.extracted.diagnostics ?? null,
+    url: result.url,
+    title: result.title,
+    text: result.text,
+    source: result.source,
+    truncated: result.truncated,
+    totalCharacters: result.totalCharacters,
+    wordCount: result.wordCount,
+    media: result.media,
+    transcriptSource: result.transcriptSource,
+    transcriptionProvider: result.transcriptionProvider,
+    transcriptCharacters: result.transcriptCharacters,
+    transcriptWordCount: result.transcriptWordCount,
+    transcriptLines: result.transcriptLines,
+    transcriptTimedText: result.transcriptTimedText,
+    mediaDurationSeconds: result.mediaDurationSeconds,
+    slides: result.slides,
+    diagnostics: result.diagnostics ?? null,
   };
-  if (!next.mediaDurationSeconds) {
-    const fallback = await extractFromTab(tab.id, CHAT_FULL_TRANSCRIPT_MAX_CHARS);
-    if (fallback.ok) {
-      const duration = fallback.data.mediaDurationSeconds;
-      if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
-        next.mediaDurationSeconds = duration;
-      }
-      if (!next.media) {
-        next.media = fallback.data.media ?? null;
-      }
-    }
-  }
   panelSessionStore.setCachedExtract(tab.id, next);
   return next;
 }
