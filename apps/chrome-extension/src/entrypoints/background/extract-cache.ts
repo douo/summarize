@@ -117,6 +117,7 @@ export async function ensureChatExtract({
   const result = await routeExtract({
     tab,
     settings,
+    noCache: false,
     extractFromTab,
     fetchImpl,
     log,

@@ -35,6 +35,7 @@ const PAGE_EXTRACTORS = [redditThread, redditListing, pageReadability, urlDaemon
 export async function routeExtract({
   tab,
   settings,
+  noCache,
   extractFromTab,
   fetchImpl,
   log,
@@ -47,6 +48,7 @@ export async function routeExtract({
     slidesEnabled: boolean;
     extendedLogging: boolean;
   };
+  noCache: boolean;
   extractFromTab: (
     tabId: number,
     maxChars: number,
@@ -63,11 +65,12 @@ export async function routeExtract({
   const typedTab = tab as chrome.tabs.Tab & { id: number; url: string };
   const preferUrl = shouldPreferUrlMode(typedTab.url);
 
-  log("extractor.route.start", { url: typedTab.url, preferUrl });
+  log("extractor.route.start", { url: typedTab.url, preferUrl, noCache });
 
   const ctx: ExtractorContext = {
     tab: typedTab,
     settings,
+    noCache,
     extractFromTab,
     fetchImpl,
     log,

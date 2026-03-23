@@ -4,6 +4,7 @@ import type { Settings } from "../../lib/settings";
 import { isYouTubeWatchUrl } from "../../lib/youtube-url";
 import type { ExtractResponse } from "./content-script-bridge";
 import type { CachedExtract } from "./extract-cache";
+import { routeExtract } from "./extractors/router";
 
 type DaemonRecoveryLike = {
   recordFailure: (url: string) => void;
@@ -139,135 +140,69 @@ export async function summarizeActiveTab({
   const controller = new AbortController();
   session.runController = controller;
 
-  const prefersUrlMode = Boolean(tab.url && shouldPreferUrlMode(tab.url));
-  const wantsUrlFastPath =
-    Boolean(tab.url && isYouTubeWatchUrl(tab.url)) && opts?.inputMode !== "page" && prefersUrlMode;
-
   let extracted: ExtractResponse & { ok: true };
-  if (wantsUrlFastPath) {
-    sendStatus(`Fetching transcript… (${reason})`);
-    logPanel("extract:url-fastpath:start", { reason, tabId: tab.id });
-    try {
-      const res = await fetchImpl("http://127.0.0.1:8787/v1/summarize", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${settings.token.trim()}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          url: tab.url,
-          title: tab.title ?? null,
-          mode: "url",
-          extractOnly: true,
-          timestamps: true,
-          ...(opts?.refresh ? { noCache: true } : {}),
-          maxCharacters: null,
-          diagnostics: settings.extendedLogging ? { includeContent: true } : null,
-        }),
-        signal: controller.signal,
-      });
-      const json = (await res.json()) as {
-        ok?: boolean;
-        extracted?: {
-          url: string;
-          title: string | null;
-          truncated: boolean;
-          mediaDurationSeconds?: number | null;
-          transcriptTimedText?: string | null;
-        };
-        error?: string;
-      };
-      if (!res.ok || !json.ok || !json.extracted) {
-        throw new Error(json.error || `${res.status} ${res.statusText}`);
-      }
-      const extractedUrl = json.extracted.url || tab.url;
-      extracted = {
-        ok: true,
-        url: extractedUrl,
-        title: json.extracted.title ?? tab.title ?? null,
-        text: "",
-        truncated: Boolean(json.extracted.truncated),
-        media: { hasVideo: true, hasAudio: true, hasCaptions: true },
-        mediaDurationSeconds: json.extracted.mediaDurationSeconds ?? null,
-      };
+  try {
+    const result = await routeExtract({
+      tab: tab as chrome.tabs.Tab & { id: number; url: string },
+      settings: {
+        token: settings.token,
+        maxChars: settings.maxChars,
+        slidesEnabled: settings.slidesEnabled,
+        extendedLogging: settings.extendedLogging,
+      },
+      noCache: Boolean(opts?.refresh),
+      extractFromTab,
+      fetchImpl,
+      log: logPanel,
+      sendStatus,
+    });
+
+    extracted = {
+      ok: true,
+      url: result.url,
+      title: result.title,
+      text: result.text,
+      truncated: result.truncated,
+      media: result.media,
+      mediaDurationSeconds: result.mediaDurationSeconds,
+    };
+
+    // 对于 URL 提取器（如 YouTube/url-daemon），预先更新缓存以匹配之前的 FastPath 逻辑。
+    if (result.source === "url") {
       panelSessionStore.setCachedExtract(tab.id, {
-        url: extractedUrl,
-        title: extracted.title ?? null,
-        text: "",
+        url: result.url,
+        title: result.title,
+        text: result.text,
         source: "url",
-        truncated: Boolean(json.extracted.truncated),
-        totalCharacters: 0,
-        wordCount: null,
-        media: { hasVideo: true, hasAudio: true, hasCaptions: true },
-        transcriptSource: null,
-        transcriptionProvider: null,
-        transcriptCharacters: null,
-        transcriptWordCount: null,
-        transcriptLines: null,
-        transcriptTimedText: json.extracted.transcriptTimedText ?? null,
-        mediaDurationSeconds: json.extracted.mediaDurationSeconds ?? null,
-        slides: null,
-        diagnostics: null,
+        truncated: result.truncated,
+        totalCharacters: result.totalCharacters,
+        wordCount: result.wordCount,
+        media: result.media,
+        transcriptSource: result.transcriptSource,
+        transcriptionProvider: result.transcriptionProvider,
+        transcriptCharacters: result.transcriptCharacters,
+        transcriptWordCount: result.transcriptWordCount,
+        transcriptLines: result.transcriptLines,
+        transcriptTimedText: result.transcriptTimedText,
+        mediaDurationSeconds: result.mediaDurationSeconds,
+        slides: result.slides,
+        diagnostics: result.diagnostics ?? null,
       });
       session.daemonStatus.markReady();
-      logPanel("extract:url-fastpath:ok", {
-        url: extractedUrl,
-        transcriptTimedText: Boolean(json.extracted.transcriptTimedText),
-        durationSeconds: json.extracted.mediaDurationSeconds ?? null,
-      });
-    } catch (err) {
-      logPanel("extract:url-fastpath:error", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      extracted = {
-        ok: true,
-        url: tab.url,
-        title: tab.title ?? null,
-        text: "",
-        truncated: false,
-        media: { hasVideo: true, hasAudio: true, hasCaptions: true },
-      };
     }
-  } else {
-    sendStatus(`Extracting… (${reason})`);
-    logPanel("extract:start", { reason, tabId: tab.id, maxChars: settings.maxChars });
-    const statusFromExtractEvent = (event: string) => {
-      if (!panelSessionStore.isPanelOpen(session)) return;
-      if (event === "extract:attempt") {
-        sendStatus(`Extracting page content… (${reason})`);
-        return;
-      }
-      if (event === "extract:inject:ok") {
-        sendStatus(`Extracting: injecting… (${reason})`);
-        return;
-      }
-      if (event === "extract:message:ok") {
-        sendStatus(`Extracting: reading… (${reason})`);
-      }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logPanel("extract:failed", { error: errorMsg });
+
+    // 提取彻底失败时回退到空外壳。
+    extracted = {
+      ok: true,
+      url: tab.url,
+      title: tab.title ?? null,
+      text: "",
+      truncated: false,
+      media: null,
     };
-    const extractedAttempt = await extractFromTab(tab.id, settings.maxChars, {
-      timeoutMs: 8_000,
-      log: (event, detail) => {
-        statusFromExtractEvent(event);
-        logPanel(event, detail);
-      },
-    });
-    logPanel(extractedAttempt.ok ? "extract:done" : "extract:failed", {
-      ok: extractedAttempt.ok,
-      ...(extractedAttempt.ok
-        ? { url: extractedAttempt.data.url }
-        : { error: extractedAttempt.error }),
-    });
-    extracted = extractedAttempt.ok
-      ? extractedAttempt.data
-      : {
-          ok: true,
-          url: tab.url,
-          title: tab.title ?? null,
-          text: "",
-          truncated: false,
-          media: null,
-        };
   }
 
   if (tab.url && extracted.url && !urlsMatch(tab.url, extracted.url)) {

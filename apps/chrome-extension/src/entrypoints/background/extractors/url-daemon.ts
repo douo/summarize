@@ -62,6 +62,7 @@ export class UrlDaemonExtractor implements Extractor {
           extractOnly: true,
           timestamps: true,
           ...(wantsSlides ? { slides: true } : {}),
+          ...(ctx.noCache ? { noCache: true } : {}),
           maxCharacters: null,
         }),
         signal: controller.signal,

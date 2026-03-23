@@ -23,6 +23,9 @@ export type ExtractorContext = {
     extendedLogging: boolean;
   };
 
+  /** 是否强制跳过缓存（对应 Refresh 逻辑） */
+  noCache: boolean;
+
   /** 通过 content script 从标签页提取（即现有 Readability 路径） */
   extractFromTab: (
     tabId: number,
